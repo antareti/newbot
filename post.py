@@ -1,13 +1,15 @@
 import asyncio
 import re
 import logging
+import os  # Модуль для связи с секретами GitHub
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
-TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
+# Бот берет токен из переменной окружения GitHub Secrets
+TOKEN = os.getenv("BOT_TOKEN") 
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098  # Ваш верифицированный ID
 
@@ -15,6 +17,7 @@ MY_ADMIN_ID = 7917303098  # Ваш верифицированный ID
 logging.basicConfig(level=logging.INFO)
 
 # Инициализация бота с поддержкой HTML
+# Если токен не найден в секретах, система выдаст ошибку при запуске
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
