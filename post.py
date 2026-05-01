@@ -1,46 +1,42 @@
 import asyncio
 import re
 import logging
-import os  # Модуль для связи с секретами GitHub
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
-# Бот берет токен из переменной окружения GitHub Secrets
-TOKEN = os.getenv("BOT_TOKEN") 
+# Токен интегрирован напрямую для мгновенного запуска
+TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098  # Ваш верифицированный ID
 
-# Настройка логирования для контроля в консоли
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота с поддержкой HTML
-# Если токен не найден в секретах, система выдаст ошибку при запуске
+# Инициализация бота
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 def clean_and_style(text: str) -> str:
-    """Очистка текста от чужой рекламы и добавление подписи"""
+    """Очистка текста и добавление фирменной подписи"""
     if not text: return ""
-    # Удаляем ссылки и чужие юзернеймы
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
-    # Ваша уникальная подпись
     signature = "\n\n<b>💀 SOURCE: @hackpackposter</b>"
     return text.strip() + signature
 
 def get_post_kb():
-    """Создание кнопок для постов в канале"""
+    """Создание кнопок взаимодействия"""
     builder = InlineKeyboardBuilder()
     builder.row(
         types.InlineKeyboardButton(text="👍", callback_data="like"),
         types.InlineKeyboardButton(text="👎", callback_data="dislike")
     )
-    # Кнопка быстрой пересылки вашего канала
     builder.row(types.InlineKeyboardButton(
         text="📡 SHARE ACCESS", 
         url="https://t.me/share/url?url=https://t.me/hackpackposter")
@@ -51,10 +47,10 @@ def get_post_kb():
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    """СЛЕЖКА: Срабатывает при активации бота новым пользователем"""
+    """СЛЕЖКА: Генерация лога в стиле HACKPACK"""
     user = message.from_user
     
-    # Формирование отчета в вашем стиле
+    # Ваш кастомный формат вывода
     log_report = (
         f"<code>NAME: {user.first_name.upper()}. 🛡VOTREN\n"
         f"UID: {user.id}\n"
@@ -62,23 +58,18 @@ async def start_handler(message: types.Message):
         f"SIGNAL: Encrypted</code>"
     )
     
-    # Отправка лога Хозяину
     await bot.send_message(MY_ADMIN_ID, log_report)
-    
-    # Ответ в интерфейс бота
     await message.answer("<b>STATION READY.</b>\nConnection established...")
 
 @dp.message()
 async def posting_handler(message: types.Message):
-    """ПОСТИНГ: Обработка контента от админа и пересылка в канал"""
-    # Проверка прав доступа
+    """ПОСТИНГ: Пересылка контента от админа в канал"""
     if message.from_user.id == MY_ADMIN_ID:
         try:
             raw_text = message.text or message.caption or ""
             text = clean_and_style(raw_text)
             kb = get_post_kb()
 
-            # Обработка разных типов данных
             if message.text:
                 await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
             elif message.photo:
@@ -92,7 +83,7 @@ async def posting_handler(message: types.Message):
         except Exception as e:
             await message.answer(f"❌ <b>CRITICAL ERROR:</b> {e}")
     else:
-        # Шпионаж: Перехват сообщений от сторонних лиц
+        # Перехват данных от посторонних
         spy_msg = (
             f"📡 <b>INCOMING DATA FROM {message.from_user.id}:</b>\n"
             f"@{message.from_user.username or 'unknown'}: {message.text or 'MEDIA'}"
@@ -101,14 +92,11 @@ async def posting_handler(message: types.Message):
 
 @dp.callback_query()
 async def reactions_callback(callback: types.CallbackQuery):
-    """Заглушка для кнопок реакций"""
     await callback.answer("Голос принят!")
 
 async def main():
-    """Запуск ядра системы"""
+    """Запуск ядра системы BITSNIFFER"""
     print("--- BITSNIFFER CORE ONLINE ---")
-    print(f"Targeting: {CHANNEL_ID}")
-    print(f"Master ID: {MY_ADMIN_ID}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
