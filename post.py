@@ -1,87 +1,61 @@
-import asyncio
-import re
-import logging
-import aiohttp
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.client.default import DefaultBotProperties
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+import os
+import pyautogui
+from aiogram import Bot, Dispatcher, types, executor
 
-# --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
-TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
-IPLOGGER_API_KEY = "api_T34YFYm4xwWYl1Pfi2DjCFX78eCD3PZO"
-LOGGER_ID = "hackpack" 
-MY_ADMIN_ID = 7917303098 
+# --- ТВОИ ДАННЫЕ ---
+API_TOKEN = '8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM'
+ADMIN_ID = 0  # ЗАМЕНИ 0 НА СВОЙ ID (например, 12345678)
+# -------------------
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-dp = Dispatcher()
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
 
-# --- СИСТЕМА ПЕРЕХВАТА IP ---
+# Проверка, что пишет именно хозяин
+def is_admin(user_id):
+    return user_id == ADMIN_ID
 
-async def get_last_ip_intel():
-    """Запрос статистики с исправленными заголовками"""
-    # Используем актуальный эндпоинт API
-    url = f"https://api.iplogger.org/v1/loggers/{LOGGER_ID}/visitors"
-    headers = {
-        "X-API-KEY": IPLOGGER_API_KEY,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    params = {"limit": 1}
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, params=params, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    # Проверка структуры ответа
-                    visitors = data.get("visitors", [])
-                    if visitors:
-                        v = visitors[0]
-                        return (f"🚀 <b>TARGET COMPROMISED:</b>\n"
-                                f"🌐 <b>IP:</b> <code>{v.get('ip')}</code>\n"
-                                f"📍 <b>LOC:</b> {v.get('city')}, {v.get('country')}\n"
-                                f"📱 <b>OS:</b> {v.get('user_agent')[:100]}...")
-                    return "📡 <b>LOG:</b> Кликов пока нет. Ожидаем цель."
-                else:
-                    return f"⚠️ <b>API Error {response.status}:</b> Проверьте ключ или ID логгера."
-    except Exception as e:
-        return f"⚠️ <b>System Error:</b> {str(e)}"
-
-# --- КНОПКИ ---
-
-def get_spy_kb():
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="🛡 ВЕРИФИКАЦИЯ", url="https://iplogger.com/2eCyg6"))
-    builder.row(types.InlineKeyboardButton(text="🔄 СТАТУС ЗАХВАТА", callback_data="check_ip"))
-    return builder.as_markup()
-
-# --- ОБРАБОТЧИКИ ---
-
-@dp.message(Command("start"))
-async def start_handler(message: types.Message):
-    if message.from_user.id == MY_ADMIN_ID:
-        await message.answer(f"<b>BITSNIFFER v3.1 ONLINE.</b>\nID: <code>{LOGGER_ID}</code>")
+@dp.message_handler(commands=['start'])
+async def start_cmd(message: types.Message):
+    if is_admin(message.from_user.id):
+        await message.answer(
+            "🎮 Доступ разрешен!\n\n"
+            "Команды управления:\n"
+            "📸 /screen — сделать скриншот\n"
+            "🔌 /off — выключить компьютер\n"
+            "💬 /msg <текст> — отправить окно с текстом на экран"
+        )
     else:
-        await bot.send_message(MY_ADMIN_ID, f"<code>[DETECTED] {message.from_user.id} вошел.</code>")
-        await message.answer("<b>ACCESS DENIED.</b> Пройдите верификацию.", reply_markup=get_spy_kb())
+        await message.answer("Ошибка доступа. Вы не являетесь администратором.")
 
-@dp.callback_query(F.data == "check_ip")
-async def check_ip_callback(callback: types.CallbackQuery):
-    result = await get_last_ip_intel()
-    await bot.send_message(MY_ADMIN_ID, result)
-    await callback.answer()
+@dp.message_handler(commands=['screen'])
+async def make_screenshot(message: types.Message):
+    if is_admin(message.from_user.id):
+        try:
+            # Делаем скриншот
+            pyautogui.screenshot("temp_screen.png")
+            with open("temp_screen.png", "rb") as photo:
+                await bot.send_photo(message.chat.id, photo, caption="Текущий экран ПК")
+            os.remove("temp_screen.png")
+        except Exception as e:
+            await message.answer(f"Не удалось сделать скрин: {e}")
 
-@dp.message()
-async def posting_handler(message: types.Message):
-    if message.from_user.id == MY_ADMIN_ID:
-        # (Код постинга без изменений, чтобы не раздувать сообщение)
-        await message.answer("🛠 <b>LOG: Packet sent.</b>")
-    else:
-        await message.answer("<b>VERIFICATION REQUIRED.</b>", reply_markup=get_spy_kb())
+@dp.message_handler(commands=['msg'])
+async def send_message_pc(message: types.Message):
+    if is_admin(message.from_user.id):
+        text = message.get_args()
+        if text:
+            # Всплывающее окно на компьютере
+            pyautogui.alert(text, "Внимание!")
+            await message.answer("Сообщение доставлено на рабочий стол.")
+        else:
+            await message.answer("Пример: /msg Купи хлеб")
 
-async def main():
-    await dp.start_polling(bot)
+@dp.message_handler(commands=['off'])
+async def shutdown_pc(message: types.Message):
+    if is_admin(message.from_user.id):
+        await message.answer("Выключение компьютера через 10 секунд...")
+        os.system("shutdown /s /t 10")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    print("Бот запущен. Ожидаю команд от ID:", ADMIN_ID)
+    executor.start_polling(dp, skip_updates=True)
