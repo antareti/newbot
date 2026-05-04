@@ -1,84 +1,71 @@
 import asyncio
 import re
 import logging
-import os  # Модуль для связи с секретами GitHub
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-# --- КОНФИГУРАЦИЯ СИСТЕМЫ ---
-# Бот берет токен из переменной окружения GitHub Secrets
-TOKEN = os.getenv("8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM") 
+# --- КОНФИГУРАЦИЯ ---
+TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
 CHANNEL_ID = "@hackpackposter" 
-MY_ADMIN_ID = 7917303098  # Ваш верифицированный ID
+MY_ADMIN_ID = 7917303098  # Ваш ID установлен
 
-# Настройка логирования для контроля в консоли
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота с поддержкой HTML
-# Если токен не найден в секретах, система выдаст ошибку при запуске
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+# --- ФУНКЦИИ УТИЛИТЫ ---
 
 def clean_and_style(text: str) -> str:
-    """Очистка текста от чужой рекламы и добавление подписи"""
     if not text: return ""
-    # Удаляем ссылки и чужие юзернеймы
+    # Удаляем чужие ссылки и юзернеймы
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
-    # Ваша уникальная подпись
-    signature = "\n\n<b>💀 SOURCE: @hackpackposter</b>"
+    # Добавляем вашу подпись
+    signature = "\n\n<b>💀 Доступ открыт в: @hackpackposter</b>"
     return text.strip() + signature
 
 def get_post_kb():
-    """Создание кнопок для постов в канале"""
     builder = InlineKeyboardBuilder()
     builder.row(
         types.InlineKeyboardButton(text="👍", callback_data="like"),
         types.InlineKeyboardButton(text="👎", callback_data="dislike")
     )
-    # Кнопка быстрой пересылки вашего канала
-    builder.row(types.InlineKeyboardButton(
-        text="📡 SHARE ACCESS", 
-        url="https://t.me/share/url?url=https://t.me/hackpackposter")
-    )
+    builder.row(types.InlineKeyboardButton(text="📡 Поделиться", url="https://t.me/share/url?url=https://t.me/hackpackposter"))
     return builder.as_markup()
 
-# --- ОБРАБОТЧИКИ СОБЫТИЙ ---
+# --- ОБРАБОТЧИКИ ---
 
+# СЛЕЖКА: Срабатывает на новых пользователей
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    """СЛЕЖКА: Срабатывает при активации бота новым пользователем"""
-    user = message.from_user
-    
-    # Формирование отчета в вашем стиле
-    log_report = (
-        f"<code>NAME: {user.first_name.upper()}. 🛡VOTREN\n"
-        f"UID: {user.id}\n"
-        f"GEO_TAG: Tbilisi_Node [Target Area]\n"
-        f"SIGNAL: Encrypted</code>"
+    # Отправляем отчет вам в личку
+    report = (
+        f"🚨 <b>ОБЪЕКТ ЗАФИКСИРОВАН</b>\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"<b>Имя:</b> {message.from_user.full_name}\n"
+        f"<b>ID:</b> <code>{message.from_user.id}</code>\n"
+        f"<b>Username:</b> @{message.from_user.username or 'скрыт'}\n"
+        f"<b>Язык:</b> {message.from_user.language_code}\n"
+        f"━━━━━━━━━━━━━━"
     )
+    await bot.send_message(MY_ADMIN_ID, report)
     
-    # Отправка лога Хозяину
-    await bot.send_message(MY_ADMIN_ID, log_report)
-    
-    # Ответ в интерфейс бота
-    await message.answer("<b>STATION READY.</b>\nConnection established...")
+    # Ответ пользователю
+    await message.answer("🦾 <b>Система верификации BITSNIFFER.</b>\nВаш узел связи проверен. Доступ разрешен.")
 
+# ПОСТИНГ: Срабатывает, когда вы пересылаете контент боту
 @dp.message()
 async def posting_handler(message: types.Message):
-    """ПОСТИНГ: Обработка контента от админа и пересылка в канал"""
-    # Проверка прав доступа
+    # Проверка, что пишет именно Хозяин
     if message.from_user.id == MY_ADMIN_ID:
         try:
-            raw_text = message.text or message.caption or ""
-            text = clean_and_style(raw_text)
+            text = clean_and_style(message.text or message.caption or "")
             kb = get_post_kb()
 
-            # Обработка разных типов данных
             if message.text:
                 await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
             elif message.photo:
@@ -88,31 +75,21 @@ async def posting_handler(message: types.Message):
             elif message.document:
                 await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb)
 
-            await message.answer("🛠 <b>LOG: Packet sent to @hackpackposter</b>")
+            await message.answer("🚀 <b>Пост уникализирован и отправлен!</b>")
         except Exception as e:
-            await message.answer(f"❌ <b>CRITICAL ERROR:</b> {e}")
+            await message.answer(f"❌ Ошибка публикации: {e}")
     else:
-        # Шпионаж: Перехват сообщений от сторонних лиц
-        spy_msg = (
-            f"📡 <b>INCOMING DATA FROM {message.from_user.id}:</b>\n"
-            f"@{message.from_user.username or 'unknown'}: {message.text or 'MEDIA'}"
-        )
-        await bot.send_message(MY_ADMIN_ID, spy_msg)
+        # Если пишет кто-то другой, бот тихо докладывает вам
+        await bot.send_message(MY_ADMIN_ID, f"📩 <b>Перехват сообщения от @{message.from_user.username}:</b>\n{message.text or 'Медиафайл'}")
 
 @dp.callback_query()
-async def reactions_callback(callback: types.CallbackQuery):
-    """Заглушка для кнопок реакций"""
+async def reactions(callback: types.CallbackQuery):
     await callback.answer("Голос принят!")
 
 async def main():
-    """Запуск ядра системы"""
-    print("--- BITSNIFFER CORE ONLINE ---")
-    print(f"Targeting: {CHANNEL_ID}")
-    print(f"Master ID: {MY_ADMIN_ID}")
+    print(f"--- СИСТЕМА BITSNIFFER ONLINE ---")
+    print(f"HOST ID: {MY_ADMIN_ID}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("System shutdown.")
+    asyncio.run(main())
