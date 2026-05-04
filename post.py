@@ -7,7 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ ---
-TOKEN = "8777973485:AAHg2x7ez-wCOMb1b9CEC-uaO4uKf4tVAxM"
+TOKEN = "8606715900:AAFGjZcI5_FiSydtLPnpu0J9QSxMHP9WezA"
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098  # Ваш ID установлен
 
