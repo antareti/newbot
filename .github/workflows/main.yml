@@ -1,27 +1,28 @@
 name: HACKPACK RUNNER
 
 on:
-  schedule:
-    - cron: '0 */6 * * *' # Запуск каждые 6 часов
-  workflow_dispatch: # Кнопка ручного запуска
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
-  run-bot:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4  # Обновлено до v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # Обновлено до v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install aiogram aiohttp
 
       - name: Run Bot
         env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Исправляет предупреждение Node.js
         run: python post.py
